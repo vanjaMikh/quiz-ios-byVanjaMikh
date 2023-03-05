@@ -8,6 +8,7 @@ final class MovieQuizViewController: UIViewController, QuestionFactoryDelegate {
     @IBOutlet private var textLabel: UILabel!
     @IBOutlet private var noButton: UIButton!
     @IBOutlet private var yesButton: UIButton!
+    @IBOutlet weak var activityIndicator: UIActivityIndicatorView!
     
     private var currentQuestionIndex: Int = 0
     private var correctAnswers: Int = 0
@@ -19,15 +20,14 @@ final class MovieQuizViewController: UIViewController, QuestionFactoryDelegate {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        questionFactory = QuestionFactory(moviesLoader: MoviesLoader(), delegate: self)
+        questionFactory?.loadData()
         alertPresenter = AlertPresenter()
-        questionFactory = QuestionFactory(delegate: self)
-        questionFactory?.requestNextQuestion()
         statisticService = StatisticServiceImplementation()
+        showLoadingIndicator()
         
         imageView.layer.masksToBounds = true
         imageView.layer.cornerRadius = 20
-        imageView.layer.borderWidth = 8
-
     }
     
     // MARK: - QuestionFactoryDelegate
@@ -43,8 +43,18 @@ final class MovieQuizViewController: UIViewController, QuestionFactoryDelegate {
         }
     }
     
+    func didLoadDataFromServer() {
+        activityIndicator.isHidden = true
+        questionFactory?.requestNextQuestion()
+    }
+    
+    func didFailToLoadData(with error: Error) {
+        showNetworkError(message: error.localizedDescription)
+    }
+    
     @IBAction private func noButtonClicked(_ sender: UIButton) {
         toggleButton()
+        showLoadingIndicator()
         imageView.layer.borderWidth = 8
         guard let currentQuestion = currentQuestion else {
             return
@@ -54,6 +64,7 @@ final class MovieQuizViewController: UIViewController, QuestionFactoryDelegate {
     }
     @IBAction private func yesButtonClicked(_ sender: UIButton) {
         toggleButton()
+        showLoadingIndicator()
         imageView.layer.borderWidth = 8
         guard let currentQuestion = currentQuestion else {
             return
@@ -75,7 +86,7 @@ final class MovieQuizViewController: UIViewController, QuestionFactoryDelegate {
     
     private func convert(model: QuizQuestion) -> QuizStepViewModel{
         return QuizStepViewModel (
-            image: UIImage(named: model.image) ?? UIImage(),
+            image: UIImage(data: model.image) ?? UIImage(),
             question: model.text,
             questionNumber: "\(currentQuestionIndex + 1)/\(questionsAmount)"
         )
@@ -92,7 +103,28 @@ final class MovieQuizViewController: UIViewController, QuestionFactoryDelegate {
             self.showNextQuestionOrResult()
             self.toggleButton()
             self.imageView.layer.borderWidth = 0
+            self.activityIndicator.isHidden = true
         }
+    }
+    
+    private func showLoadingIndicator() {
+        activityIndicator.isHidden = false
+        activityIndicator.startAnimating()
+    }
+    
+    private func showNetworkError(message: String) {
+        activityIndicator.isHidden = true
+            let model = AlertModel(title: "Ошибка",
+                                   message: message,
+                                   buttonText: "Попробовать еще раз") { [weak self] in
+                guard let self = self else { return }
+                
+                self.currentQuestionIndex = 0
+                self.correctAnswers = 0
+                
+                self.questionFactory?.requestNextQuestion()
+            }
+        alertPresenter?.present(alert: model, presentingViewController: self)
     }
     
     private func showNextQuestionOrResult() {
